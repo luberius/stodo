@@ -13,28 +13,64 @@ import (
 	"github.com/luberius/stodo/todo"
 )
 
-var styles = struct {
-	title        lipgloss.Style
-	item         lipgloss.Style
-	selectedItem lipgloss.Style
-	pagination   lipgloss.Style
-	help         lipgloss.Style
-	dialog       func(width int) lipgloss.Style
-}{
-	title:        lipgloss.NewStyle().MarginLeft(2),
-	item:         lipgloss.NewStyle().PaddingLeft(4),
-	selectedItem: lipgloss.NewStyle().PaddingLeft(2).Foreground(lipgloss.Color("170")),
-	pagination:   list.DefaultStyles().PaginationStyle.PaddingLeft(4),
-	help:         list.DefaultStyles().HelpStyle.PaddingLeft(4).PaddingBottom(1),
-	dialog: func(width int) lipgloss.Style {
-		return lipgloss.NewStyle().
+const listHeight = 14
+
+var (
+	titleStyle        = lipgloss.NewStyle().MarginLeft(2)
+	itemStyle         = lipgloss.NewStyle().PaddingLeft(4)
+	selectedItemStyle = lipgloss.NewStyle().PaddingLeft(2).Foreground(lipgloss.Color("170"))
+	paginationStyle   = list.DefaultStyles().PaginationStyle.PaddingLeft(4)
+	helpStyle         = list.DefaultStyles().HelpStyle.PaddingLeft(4).PaddingBottom(1)
+	windowStyle       = lipgloss.NewStyle().
+				BorderStyle(lipgloss.NormalBorder()).
+				BorderForeground(lipgloss.Color("#874BFD")).
+				Padding(1, 2)
+	dialogStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("62")).
 			Padding(1, 2).
-			Width(width).
-			Align(lipgloss.Center).
-			MarginLeft(2)
-	},
+			Align(lipgloss.Center)
+)
+
+type todoItem struct {
+	task todo.Task
+}
+
+func (i todoItem) FilterValue() string { return "" }
+
+type itemDelegate struct{}
+
+func (d itemDelegate) Height() int                             { return 1 }
+func (d itemDelegate) Spacing() int                            { return 0 }
+func (d itemDelegate) Update(_ tea.Msg, _ *list.Model) tea.Cmd { return nil }
+func (d itemDelegate) Render(w io.Writer, m list.Model, index int, listItem list.Item) {
+	i, ok := listItem.(todoItem)
+	if !ok {
+		return
+	}
+
+	checkbox := map[bool]string{true: "✓", false: "○"}[i.task.Done]
+	priority := getPriorityEmoji(i.task.Priority)
+	str := fmt.Sprintf("%s %s %s", checkbox, priority, i.task.Text)
+
+	fn := itemStyle.Render
+	if index == m.Index() {
+		fn = func(s ...string) string {
+			return selectedItemStyle.Render("> " + strings.Join(s, " "))
+		}
+	}
+	fmt.Fprint(w, fn(str))
+}
+
+type model struct {
+	list         list.Model
+	store        *todo.Store
+	quitting     bool
+	dialog       dialogState
+	textInput    textinput.Model
+	dialogWidth  int
+	dialogHeight int
+	keys         keyMap
 }
 
 type dialogState int
@@ -46,50 +82,140 @@ const (
 	archiveLabel
 )
 
-type Model struct {
-	list         list.Model
-	keys         keyMap
-	store        *todo.Store
-	quitting     bool
-	dialog       dialogState
-	textInput    textinput.Model
-	dialogWidth  int
-	dialogHeight int
+func New(store *todo.Store) model {
+	const defaultWidth = 50
+
+	ti := textinput.New()
+	ti.Placeholder = "Enter task..."
+	ti.Focus()
+
+	l := list.New([]list.Item{}, itemDelegate{}, defaultWidth, listHeight)
+	l.SetShowStatusBar(false)
+	l.SetFilteringEnabled(false)
+	l.Title = "Todo List"
+	l.Styles.Title = titleStyle
+	l.Styles.PaginationStyle = paginationStyle
+	l.Styles.HelpStyle = helpStyle
+
+	m := model{
+		store:     store,
+		textInput: ti,
+		list:      l,
+		keys:      newKeyMap(),
+	}
+	m.updateList()
+	return m
 }
 
-type TaskItem todo.Task
-
-func (t TaskItem) FilterValue() string { return t.Text }
-
-type itemDelegate struct{}
-
-func (d itemDelegate) Height() int                             { return 1 }
-func (d itemDelegate) Spacing() int                            { return 0 }
-func (d itemDelegate) Update(_ tea.Msg, _ *list.Model) tea.Cmd { return nil }
-func (d itemDelegate) Render(w io.Writer, m list.Model, index int, listItem list.Item) {
-	task, ok := listItem.(TaskItem)
-	if !ok {
-		return
-	}
-	str := formatTaskItem(task, index == m.Index())
-	fmt.Fprint(w, str)
+func (m model) Init() tea.Cmd {
+	return textinput.Blink
 }
 
-func formatTaskItem(task TaskItem, isSelected bool) string {
-	checkbox := map[bool]string{true: "✓", false: "○"}[task.Done]
-	priorityEmoji := getPriorityEmoji(task.Priority)
-
-	text := task.Text
-	if task.Done {
-		text = lipgloss.NewStyle().Strikethrough(true).Render(text)
+func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		if m.dialog != noDialog {
+			return m.handleDialogKey(msg)
+		}
+		return m.handleNormalKey(msg)
+	case tea.WindowSizeMsg:
+		m.dialogWidth = msg.Width / 2
+		m.dialogHeight = 6
+		m.list.SetWidth(msg.Width - 4)
+		return m, nil
 	}
 
-	str := fmt.Sprintf("%s %s %s", checkbox, priorityEmoji, text)
+	var cmd tea.Cmd
+	m.list, cmd = m.list.Update(msg)
+	return m, cmd
+}
 
-	if isSelected {
-		return styles.selectedItem.Render("> " + strings.TrimSpace(str))
+func (m model) handleDialogKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch m.dialog {
+	case addTask:
+		switch msg.Type {
+		case tea.KeyEnter:
+			if m.textInput.Value() != "" {
+				m.store.Add(strings.TrimSpace(m.textInput.Value()))
+				m.textInput.Reset()
+				m.dialog = noDialog
+				m.updateList()
+			}
+		case tea.KeyEsc:
+			m.dialog = noDialog
+			m.textInput.Reset()
+		default:
+			var cmd tea.Cmd
+			m.textInput, cmd = m.textInput.Update(msg)
+			return m, cmd
+		}
+	case archiveConfirm:
+		switch msg.Type {
+		case tea.KeyRunes:
+			switch string(msg.Runes) {
+			case "y", "Y":
+				m.dialog = archiveLabel
+				m.textInput.Focus()
+			case "n", "N":
+				m.dialog = noDialog
+			}
+		case tea.KeyEsc:
+			m.dialog = noDialog
+		}
+	case archiveLabel:
+		switch msg.Type {
+		case tea.KeyEnter:
+			m.store.Archive(m.textInput.Value())
+			m.textInput.Reset()
+			m.dialog = noDialog
+			m.updateList()
+		case tea.KeyEsc:
+			m.dialog = noDialog
+			m.textInput.Reset()
+		default:
+			var cmd tea.Cmd
+			m.textInput, cmd = m.textInput.Update(msg)
+			return m, cmd
+		}
 	}
-	return styles.item.Render(strings.TrimSpace(str))
+	return m, nil
+}
+
+func (m model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch {
+	case key.Matches(msg, m.keys.Quit):
+		m.quitting = true
+		return m, tea.Quit
+	case key.Matches(msg, m.keys.Add):
+		m.dialog = addTask
+		m.textInput.Focus()
+	case key.Matches(msg, m.keys.Toggle):
+		if i := m.list.Index(); i >= 0 {
+			m.store.Toggle(i)
+			m.updateList()
+		}
+	case key.Matches(msg, m.keys.Save):
+		m.store.Save()
+	case key.Matches(msg, m.keys.Archive):
+		m.dialog = archiveConfirm
+	case key.Matches(msg, m.keys.Up):
+		if m.list.Index() > 0 {
+			m.list.CursorUp()
+		}
+	case key.Matches(msg, m.keys.Down):
+		if m.list.Index() < len(m.list.Items())-1 {
+			m.list.CursorDown()
+		}
+	}
+	return m, nil
+}
+
+func (m *model) updateList() {
+	var items []list.Item
+	for _, task := range m.store.Tasks {
+		items = append(items, todoItem{task: task})
+	}
+	m.list.SetItems(items)
 }
 
 func getPriorityEmoji(priority todo.Priority) string {
@@ -105,177 +231,25 @@ func getPriorityEmoji(priority todo.Priority) string {
 	}
 }
 
-func New(store *todo.Store) Model {
-	items := make([]list.Item, len(store.Tasks))
-	for i, task := range store.Tasks {
-		items[i] = TaskItem(task)
-	}
-
-	l := list.New(items, itemDelegate{}, 0, 0)
-	l.Title = "📝 Todo List"
-	l.SetShowStatusBar(false)
-	l.SetFilteringEnabled(false)
-	l.Styles.Title = styles.title
-	l.Styles.PaginationStyle = styles.pagination
-	l.Styles.HelpStyle = styles.help
-
-	ti := textinput.New()
-	ti.Placeholder = "Enter task..."
-	ti.Focus()
-
-	return Model{
-		list:      l,
-		keys:      newKeyMap(),
-		store:     store,
-		textInput: ti,
-	}
-}
-
-func (m Model) Init() tea.Cmd {
-	return textinput.Blink
-}
-
-func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var cmds []tea.Cmd
-
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		if m.dialog != noDialog {
-			if cmd := m.handleKeyMsg(msg); cmd != nil {
-				cmds = append(cmds, cmd)
-			}
-			return m, tea.Batch(cmds...)
-		}
-
-		if cmd := m.handleKeyMsg(msg); cmd != nil {
-			cmds = append(cmds, cmd)
-		}
-
-	case tea.WindowSizeMsg:
-		m.list.SetSize(msg.Width, msg.Height-1)
-		m.dialogWidth = msg.Width / 2
-		m.dialogHeight = 6
-	}
-
-	if m.dialog == noDialog {
-		var cmd tea.Cmd
-		m.list, cmd = m.list.Update(msg)
-		if cmd != nil {
-			cmds = append(cmds, cmd)
-		}
-	}
-
-	return m, tea.Batch(cmds...)
-}
-
-func (m *Model) handleKeyMsg(msg tea.KeyMsg) tea.Cmd {
-	switch m.dialog {
-	case addTask:
-		return m.handleAddTaskDialog(msg)
-	case archiveLabel:
-		return m.handleArchiveLabelDialog(msg)
-	case archiveConfirm:
-		return m.handleArchiveConfirmDialog(msg)
-	}
-
-	return m.handleNormalMode(msg)
-}
-
-func (m *Model) handleAddTaskDialog(msg tea.KeyMsg) tea.Cmd {
-	switch msg.Type {
-	case tea.KeyEnter:
-		if m.textInput.Value() != "" {
-			m.store.Add(strings.TrimSpace(m.textInput.Value()))
-			m.updateList()
-			m.textInput.Reset()
-			m.dialog = noDialog
-		}
-	case tea.KeyEsc:
-		m.dialog = noDialog
-		m.textInput.Reset()
-	default:
-		var cmd tea.Cmd
-		m.textInput, cmd = m.textInput.Update(msg)
-		return cmd
-	}
-	return nil
-}
-
-func (m *Model) handleArchiveLabelDialog(msg tea.KeyMsg) tea.Cmd {
-	switch msg.Type {
-	case tea.KeyEnter:
-		m.store.Archive(m.textInput.Value())
-		m.textInput.Reset()
-		m.dialog = noDialog
-	case tea.KeyEsc:
-		m.dialog = noDialog
-		m.textInput.Reset()
-	default:
-		var cmd tea.Cmd
-		m.textInput, cmd = m.textInput.Update(msg)
-		return cmd
-	}
-	return nil
-}
-
-func (m *Model) handleArchiveConfirmDialog(msg tea.KeyMsg) tea.Cmd {
-	switch msg.Type {
-	case tea.KeyRunes:
-		switch string(msg.Runes) {
-		case "y", "Y":
-			m.dialog = archiveLabel
-			m.textInput.Focus()
-		case "n", "N":
-			m.dialog = noDialog
-		}
-	case tea.KeyEsc:
-		m.dialog = noDialog
-	}
-	return nil
-}
-
-func (m *Model) handleNormalMode(msg tea.KeyMsg) tea.Cmd {
-	switch {
-	case key.Matches(msg, m.keys.Quit):
-		m.quitting = true
-		return tea.Quit
-	case key.Matches(msg, m.keys.Add):
-		m.dialog = addTask
-		m.textInput.Focus()
-	case key.Matches(msg, m.keys.Toggle):
-		m.store.Toggle(m.list.Index())
-		m.updateList()
-	case key.Matches(msg, m.keys.Delete):
-		m.store.Remove(m.list.Index())
-		m.updateList()
-	case key.Matches(msg, m.keys.Save):
-		m.store.Save()
-	case key.Matches(msg, m.keys.Priority):
-		m.store.CyclePriority(m.list.Index())
-		m.updateList()
-	case key.Matches(msg, m.keys.Archive):
-		m.dialog = archiveConfirm
-	}
-	return nil
-}
-
-func (m Model) View() string {
+func (m model) View() string {
 	if m.quitting {
 		return ""
 	}
 
 	if m.dialog != noDialog {
-		dialogContent := m.getDialogContent()
-		return lipgloss.NewStyle().
-			MarginLeft(2).
-			MarginTop(1).
-			Render(styles.dialog(m.dialogWidth).Render(dialogContent))
+		return dialogStyle.Width(m.dialogWidth).Render(m.dialogContent())
 	}
 
-	return m.list.View()
+	return windowStyle.Render(
+		lipgloss.JoinVertical(
+			lipgloss.Left,
+			m.list.View(),
+			m.getStatusBar(),
+		),
+	)
 }
 
-func (m Model) getDialogContent() string {
+func (m model) dialogContent() string {
 	switch m.dialog {
 	case addTask:
 		return fmt.Sprintf(
@@ -302,52 +276,30 @@ func (m Model) getDialogContent() string {
 	}
 }
 
+func (m model) getStatusBar() string {
+	return fmt.Sprintf(
+		"n: new • space: toggle • w: save • a: archive • q: quit",
+	)
+}
+
 func subtleHelpStyle(help string) string {
 	return lipgloss.NewStyle().
 		Foreground(lipgloss.Color("240")).
 		Render(help)
 }
 
-func (m *Model) updateList() {
-	items := make([]list.Item, len(m.store.Tasks))
-	for i, task := range m.store.Tasks {
-		items[i] = TaskItem(task)
-	}
-	m.list.SetItems(items)
-}
-
 type keyMap struct {
-	Up       key.Binding
-	Down     key.Binding
-	Left     key.Binding
-	Right    key.Binding
-	Add      key.Binding
-	Toggle   key.Binding
-	Quit     key.Binding
-	Delete   key.Binding
-	Save     key.Binding
-	Priority key.Binding
-	Archive  key.Binding
+	Add     key.Binding
+	Toggle  key.Binding
+	Quit    key.Binding
+	Save    key.Binding
+	Archive key.Binding
+	Up      key.Binding
+	Down    key.Binding
 }
 
 func newKeyMap() keyMap {
 	return keyMap{
-		Up: key.NewBinding(
-			key.WithKeys("k", "up"),
-			key.WithHelp("↑/k", "up"),
-		),
-		Down: key.NewBinding(
-			key.WithKeys("j", "down"),
-			key.WithHelp("↓/j", "down"),
-		),
-		Left: key.NewBinding(
-			key.WithKeys("h", "left"),
-			key.WithHelp("←/h", "left"),
-		),
-		Right: key.NewBinding(
-			key.WithKeys("l", "right"),
-			key.WithHelp("→/l", "right"),
-		),
 		Add: key.NewBinding(
 			key.WithKeys("n"),
 			key.WithHelp("n", "new task"),
@@ -360,21 +312,21 @@ func newKeyMap() keyMap {
 			key.WithKeys("q"),
 			key.WithHelp("q", "quit"),
 		),
-		Delete: key.NewBinding(
-			key.WithKeys("d"),
-			key.WithHelp("d", "delete"),
-		),
 		Save: key.NewBinding(
 			key.WithKeys("w"),
 			key.WithHelp("w", "save"),
 		),
-		Priority: key.NewBinding(
-			key.WithKeys("p"),
-			key.WithHelp("p", "priority"),
-		),
 		Archive: key.NewBinding(
 			key.WithKeys("a"),
 			key.WithHelp("a", "archive"),
+		),
+		Up: key.NewBinding(
+			key.WithKeys("up", "k"),
+			key.WithHelp("↑/k", "move up"),
+		),
+		Down: key.NewBinding(
+			key.WithKeys("down", "j"),
+			key.WithHelp("↓/j", "move down"),
 		),
 	}
 }

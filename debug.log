@@ -1,0 +1,66 @@
+2025/01/16 13:23:53 View called - Dialog state: 0, Quitting: false
+2025/01/16 13:23:53 Rendering list view
+2025/01/16 13:23:53 Update called - msg type: cursor.initialBlinkMsg
+2025/01/16 13:23:53 Updating list model
+2025/01/16 13:23:53 View called - Dialog state: 0, Quitting: false
+2025/01/16 13:23:53 Rendering list view
+2025/01/16 13:23:53 Update called - msg type: tea.WindowSizeMsg
+2025/01/16 13:23:53 Updating list model
+2025/01/16 13:23:53 View called - Dialog state: 0, Quitting: false
+2025/01/16 13:23:53 Rendering list view
+2025/01/16 13:23:55 Update called - msg type: tea.KeyMsg
+2025/01/16 13:23:55 Key pressed: n, Type: runes, Dialog state: 0
+2025/01/16 13:23:55 Handling normal mode key event
+2025/01/16 13:23:55 Handling normal mode
+2025/01/16 13:23:55 NormalMode: Key matches - Quit: false
+2025/01/16 13:23:55 NormalMode: Add triggered
+2025/01/16 13:23:55 View called - Dialog state: 1, Quitting: false
+2025/01/16 13:23:55 Rendering dialog view
+2025/01/16 13:23:55 Update called - msg type: tea.KeyMsg
+2025/01/16 13:23:55 Key pressed: esc, Type: esc, Dialog state: 1
+2025/01/16 13:23:55 Handling dialog key event
+2025/01/16 13:23:55 Handling addTask dialog
+2025/01/16 13:23:55 AddTask: Esc pressed
+2025/01/16 13:23:55 View called - Dialog state: 0, Quitting: false
+2025/01/16 13:23:55 Rendering list view
+2025/01/16 13:23:56 Update called - msg type: tea.KeyMsg
+2025/01/16 13:23:56 Key pressed: n, Type: runes, Dialog state: 0
+2025/01/16 13:23:56 Handling normal mode key event
+2025/01/16 13:23:56 Handling normal mode
+2025/01/16 13:23:56 NormalMode: Key matches - Quit: false
+2025/01/16 13:23:56 NormalMode: Add triggered
+2025/01/16 13:23:56 View called - Dialog state: 1, Quitting: false
+2025/01/16 13:23:56 Rendering dialog view
+2025/01/16 13:23:56 Update called - msg type: tea.KeyMsg
+2025/01/16 13:23:56 Key pressed: esc, Type: esc, Dialog state: 1
+2025/01/16 13:23:56 Handling dialog key event
+2025/01/16 13:23:56 Handling addTask dialog
+2025/01/16 13:23:56 AddTask: Esc pressed
+2025/01/16 13:23:56 View called - Dialog state: 0, Quitting: false
+2025/01/16 13:23:56 Rendering list view
+2025/01/16 13:23:57 Update called - msg type: tea.KeyMsg
+2025/01/16 13:23:57 Key pressed: n, Type: runes, Dialog state: 0
+2025/01/16 13:23:57 Handling normal mode key event
+2025/01/16 13:23:57 Handling normal mode
+2025/01/16 13:23:57 NormalMode: Key matches - Quit: false
+2025/01/16 13:23:57 NormalMode: Add triggered
+2025/01/16 13:23:57 View called - Dialog state: 1, Quitting: false
+2025/01/16 13:23:57 Rendering dialog view
+2025/01/16 13:23:57 Update called - msg type: tea.KeyMsg
+2025/01/16 13:23:57 Key pressed: esc, Type: esc, Dialog state: 1
+2025/01/16 13:23:57 Handling dialog key event
+2025/01/16 13:23:57 Handling addTask dialog
+2025/01/16 13:23:57 AddTask: Esc pressed
+2025/01/16 13:23:57 View called - Dialog state: 0, Quitting: false
+2025/01/16 13:23:57 Rendering list view
+2025/01/16 13:24:06 Update called - msg type: tea.KeyMsg
+2025/01/16 13:24:06 Key pressed: q, Type: runes, Dialog state: 0
+2025/01/16 13:24:06 Handling normal mode key event
+2025/01/16 13:24:06 Handling normal mode
+2025/01/16 13:24:06 NormalMode: Key matches - Quit: true
+2025/01/16 13:24:06 NormalMode: Quit triggered
+2025/01/16 13:24:06 Updating list model
+2025/01/16 13:24:06 View called - Dialog state: 0, Quitting: true
+2025/01/16 13:24:06 View returning empty string due to quitting
+2025/01/16 13:24:06 View called - Dialog state: 0, Quitting: true
+2025/01/16 13:24:06 View returning empty string due to quitting

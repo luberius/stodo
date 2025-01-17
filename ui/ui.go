@@ -206,6 +206,11 @@ func (m model) handleNormalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.list.Index() < len(m.list.Items())-1 {
 			m.list.CursorDown()
 		}
+	case key.Matches(msg, m.keys.Priority):
+		if i := m.list.Index(); i >= 0 {
+			m.store.CyclePriority(i)
+			m.updateList()
+		}
 	}
 	return m, nil
 }
@@ -221,11 +226,11 @@ func (m *model) updateList() {
 func getPriorityEmoji(priority todo.Priority) string {
 	switch priority {
 	case todo.High:
-		return "🔴"
+		return "🚨"
 	case todo.Medium:
-		return "🟡"
+		return "📌"
 	case todo.Low:
-		return "🟢"
+		return "📎"
 	default:
 		return ""
 	}
@@ -278,7 +283,7 @@ func (m model) dialogContent() string {
 
 func (m model) getStatusBar() string {
 	return fmt.Sprintf(
-		"n: new • space: toggle • w: save • a: archive • q: quit",
+		"n: new • space: toggle • p: priority • w: save • a: archive • q: quit",
 	)
 }
 
@@ -289,13 +294,14 @@ func subtleHelpStyle(help string) string {
 }
 
 type keyMap struct {
-	Add     key.Binding
-	Toggle  key.Binding
-	Quit    key.Binding
-	Save    key.Binding
-	Archive key.Binding
-	Up      key.Binding
-	Down    key.Binding
+	Add      key.Binding
+	Toggle   key.Binding
+	Quit     key.Binding
+	Save     key.Binding
+	Archive  key.Binding
+	Up       key.Binding
+	Down     key.Binding
+	Priority key.Binding
 }
 
 func newKeyMap() keyMap {
@@ -327,6 +333,10 @@ func newKeyMap() keyMap {
 		Down: key.NewBinding(
 			key.WithKeys("down", "j"),
 			key.WithHelp("↓/j", "move down"),
+		),
+		Priority: key.NewBinding(
+			key.WithKeys("p"),
+			key.WithHelp("p", "priority"),
 		),
 	}
 }
